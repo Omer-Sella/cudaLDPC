@@ -107,14 +107,8 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
     #https://github.com/numba/numba/issues/1711
     
     
-    
-    
     with compilerLock:
-
-
         ############################
-
-    
         @cuda.jit(device = True)
         def twoElementsLoad(lhs, lhsIndex, lhsMask, rhs, rhsIndex, rhsMask):
             lhsLocal = lhs
@@ -123,7 +117,6 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
                 lhsLocal = BIG_NUMBER
             if rhsMask == 0:
                 rhsLocal = BIG_NUMBER
-        
             if lhsLocal < rhsLocal:
                 smallest = lhsLocal
                 secondSmallest = rhsLocal
@@ -132,29 +125,6 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
                 smallest = rhsLocal
                 secondSmallest = lhsLocal
                 argSmallest = rhsIndex
-            # if lhsMask == 1:
-            #     if rhsMask == 1:
-            #         if lhs < rhs:
-            #             smallest = lhs
-            #             secondSmallest = rhs
-            #             argSmallest = lhsIndex
-            #         else:
-            #             smallest = rhs
-            #             secondSmallest = lhs
-            #             argSmallest = rhsIndex
-            #     else:
-            #         smallest = lhs
-            #         secondSmallest = BIG_NUMBER
-            #         argSmallest = lhsIndex
-            # else:
-            #     if rhsMask == 1:
-            #         smallest = rhs
-            #         secondSmallest = BIG_NUMBER
-            #         argSmallest = rhsIndex
-            #     else:
-            #         smallest = BIG_NUMBER
-            #         secondSmallest = BIG_NUMBER
-            #         argSmallest = 0
             return smallest, secondSmallest, argSmallest
 
 
@@ -168,7 +138,6 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
                 resultSmallest = rhsSmallest
                 resultSecondSmallest = min(lhsSmallest, rhsSecondSmallest)
                 resultArgmin = argminRhs
-            
             return resultSmallest, resultSecondSmallest, resultArgmin
       
 
@@ -176,7 +145,6 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
         def locateTwoSmallestHorizontal2DV2(M, parityVector, smallest, secondSmallest, argmin):
         # Omer Sella: this kernel is highly specific to the 8176 X 1022 size.
         # It is intended to be used in blocks of 1X1022. Possibly could work for 2X1022 - untested.
-    
             partialSmallest = cuda.shared.array(SHARED_MEMORY_SIZE_LOCATE_TWO_SMALLEST_HORIZONTAL, dtype = float32)
             partialSecondSmallest = cuda.shared.array(SHARED_MEMORY_SIZE_LOCATE_TWO_SMALLEST_HORIZONTAL, dtype = float32)
             argminSmallest = cuda.shared.array(SHARED_MEMORY_SIZE_LOCATE_TWO_SMALLEST_HORIZONTAL, dtype = float32)
@@ -197,8 +165,6 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
                 a,b,c = twoElementsLoad(abs(M[row, i]), i, parityVector[row, i], abs(M[row, i + offset]), i + offset, parityVector[row, i + offset])
                 partialSmallest[threadIdxX], partialSecondSmallest[threadIdxX], argminSmallest[threadIdxX] = twoElementsMergeSort(partialSmallest[threadIdxX], partialSecondSmallest[threadIdxX], argminSmallest[threadIdxX], a, b, c)
                 cuda.syncthreads()
-
-    
             s = 512
             if (threadIdxX < s):
                 partialSmallest[threadIdxX], partialSecondSmallest[threadIdxX], argminSmallest[threadIdxX] = twoElementsMergeSort(partialSmallest[threadIdxX], partialSecondSmallest[threadIdxX], argminSmallest[threadIdxX], partialSmallest[threadIdxX + s], partialSecondSmallest[threadIdxX + s], argminSmallest[threadIdxX + s])
@@ -209,15 +175,6 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
                     partialSmallest[threadIdxX], partialSecondSmallest[threadIdxX], argminSmallest[threadIdxX] = twoElementsMergeSort(partialSmallest[threadIdxX], partialSecondSmallest[threadIdxX], argminSmallest[threadIdxX], partialSmallest[threadIdxX + s], partialSecondSmallest[threadIdxX + s], argminSmallest[threadIdxX + s])
                     cuda.syncthreads()
                 s = s // 2
-   
-            # if (threadIdxX < s):
-            #         partialSmallest[threadIdxX], partialSecondSmallest[threadIdxX], argminSmallest[threadIdxX] = twoElementsMergeSort(partialSmallest[threadIdxX], partialSecondSmallest[threadIdxX], argminSmallest[threadIdxX], partialSmallest[threadIdxX + s], partialSecondSmallest[threadIdxX + s], argminSmallest[threadIdxX + s])
-            #         cuda.syncthreads()
-        
-
-            # # #// Let the thread 0 for this block write it's result to main memory
-            # # #// Result is inexed by this block
-    
             if (cuda.threadIdx.y == 0):
                 smallest[row] = partialSmallest[0]#cuda.blockIdx.x#
                 secondSmallest[row] = partialSecondSmallest[0]
@@ -240,7 +197,6 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
             localSign = 1        
             for j in range(MATRIX_DIM1):
                 localSign = localSign * extendedSign(matrix[pos,j])
-                
             signVector[pos] = localSign
             cuda.syncthreads()
             return
@@ -251,16 +207,12 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
         # 3. The number of negatives in every row
         @cuda.jit
         def findMinimaAndNumberOfNegatives(parityMatrix, matrix, smallest, secondSmallest, locationOfMinimum):
-
             pos = cuda.grid(1)
-        
-        
             # Omer Sella: init local variables
             localLocationOfMinimum = -1
             localSmallest = BIG_NUMBER
             localSecondSmallest = BIG_NUMBER
             localNumberOfNegatives =  0
-        
             # First implementation: go over the row and extract the information
             for j in range(MATRIX_DIM1):
                 if parityMatrix[pos,j] == 1:
@@ -284,51 +236,38 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
             smallest[pos] = localSmallest
             secondSmallest[pos] = localSecondSmallest
             locationOfMinimum[pos] = localLocationOfMinimum
-        
-            # Omer Sella: CUDA voodoo
             cuda.syncthreads()
             return
 
 
         @cuda.jit
         def produceNewMatrix2D(parityMatrix, matrix, smallest, secondSmallest, locationOfMinimum, signProduct, newMatrix):
-        
             i,j = cuda.grid(2)
-    
             localSecondSmallest = secondSmallest[i]
             localSmallest = smallest[i]
             localLocationOfMinimum = locationOfMinimum[i]
             localSignProduct = signProduct[i]
             localMask = parityMatrix[i,j]
-    
             if matrix[i,j] >= 0:
                 localSign = 1
             else:
                 localSign = -1
-    
             temp = 0.0
             if j == localLocationOfMinimum:
                 temp = localSecondSmallest
             else:
                 temp = localSmallest
-            
             newMatrix[i,j] = localMask * temp * localSignProduct * localSign
             return
 
 
         @cuda.jit
         def maskedFanOut(mask, vector, matrix):
-    
             pos = cuda.grid(1)
-    
-            #if pos >= MATRIX_DIM1:
             if pos > MATRIX_DIM1:
                 return
             localValue = vector[pos]
             cuda.syncthreads()
-    
-    
-    
             for k in range(MATRIX_DIM0):
             #matrix[k,pos] = vector[pos]
                 if mask[k,pos] == 1:
@@ -336,44 +275,31 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
                 else:
                     matrix[k,pos] = 0.0
             cuda.syncthreads()
-            
             return
 
 
 
         @cuda.jit
         def sumReduction2DVertical(M, v_r):
-	
             partial_sum = cuda.shared.array(SHARED_MEM_VERTICAL_RECUTION, dtype = float32)
-    
-	
             row, col = cuda.grid(2) #cuda.blockIdx.x * (cuda.blockDim.x * 2) + cuda.threadIdx.x
-    
-    
             if ((row + cuda.blockDim.x) < M.shape[0]):
                 partial_sum[cuda.threadIdx.x] = M[row, col] + M[row + cuda.blockDim.x, col]
             else:
                 partial_sum[cuda.threadIdx.x] = M[row, col]
             cuda.syncthreads()
-
             #// Iterate of log base 2 the block dimension
             s = cuda.blockDim.x // 2
-    
             while (s >= 1):
-
                 if (cuda.threadIdx.x < s):
                     partial_sum[cuda.threadIdx.x] += partial_sum[cuda.threadIdx.x + s]
-
                 s = s // 2
                 cuda.syncthreads()
-        
-
             #// Let the thread 0 for this block write it's result to main memory
             #// Result is inexed by this block
             if (cuda.threadIdx.x == 0):
                 v_r[col] = partial_sum[0]
                 cuda.syncthreads()
-            
             return
 
         @cuda.jit
@@ -381,21 +307,17 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
             pos = cuda.grid(1)
             if pos >= MATRIX_DIM1:
                 return
-            
             temp = 0.0
             for k in range(MATRIX_DIM0):
                 temp = temp + matrix[k,pos]
-    
             cuda.syncthreads()
             result[pos] = temp
-
             return
         
         @cuda.jit
         def slicerCuda(vector, slicedVector):
         ## Omer Sella: slicer puts a threshold, everything STRICTLY above 0 is translated to 1,  otherwise 0 (including equality). Do not confuse with the reserved function name slice !
             pos = cuda.grid(1)
-            #print(pos)
             if pos >= MATRIX_DIM1:
                 return
             if vector[pos] > 0:
@@ -403,7 +325,6 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
             else:
                 slicedVector[pos] = 0 
             cuda.syncthreads()
-        
             return
 
     
@@ -420,7 +341,6 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
             i,j = cuda.grid(2)
             if binaryVector[j] != 0:
                 cuda.atomic.add(resultVector, i, parityMatrix[i,j])
-            
             return
 
         @cuda.jit        
@@ -430,7 +350,6 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
             if k >= MATRIX_DIM0:
                 return
             v[k] = v[k] % 2
-            
             return
     
 
@@ -441,9 +360,7 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
                 return
             else:
                 productOfSigns_device[pos] = -1 * ( ( 2 * (numberOfNegatives_device[pos] % 2) ) - 1)
-    
             return
-
         @cuda.jit
         def cudaPlusDim1(softVector_device,fromChannel_device):
             pos = cuda.grid(1)
@@ -451,7 +368,6 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
                 return
             else:
                 softVector_device[pos] += fromChannel_device[pos]
-        
             return
 
 
@@ -459,15 +375,12 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
         def cudaMatrixMinus2D(A,B):
             i, j = cuda.grid(2)
             A[i,j] -= B[i,j]
-        
             return
 
         @cuda.jit
         def checkIsCodeword(vector, result):
             sdata = cuda.shared.array(MATRIX_DIM1, dtype = float32)
-    
             pos = cuda.grid(1)
-    
             if pos >= MATRIX_DIM0:
                 return
             sdata[pos] = 0
@@ -475,10 +388,8 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
                 sdata[0] = sdata[0] + vector[pos]
                 cuda.syncthreads()
             cuda.syncthreads()
-            
             if pos == 0:
                 result[0] = sdata[0]
-            
             return
 
         @cuda.jit
@@ -489,7 +400,6 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
     
             if vector[pos] != 0:
                 cuda.atomic.add(result, 1 , 1)
-                #oss 25/11/2021 I removed cuda.syncthreads() from this line this it caused the kernel to halt the GPU when moving to cuda 10.1
             cuda.syncthreads()
 
             return
@@ -525,11 +435,10 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
         sigmaActual = np.sum(noise ** 2, axis = 1) / dim1
         sigmaActual = np.sqrt( sigmaActual )
         return noise, sigma, sigmaActual
-    
-    
     # Concurrent futures require the seed to be between 0 and 2**32 -1
     #assert (np.dtype(seed) == np.int32)
-    assert (seed > 0)
+    if seed < 0:
+	    raise ValueError("Seed must be greater than 0")
     assert hasattr(SNRpoints, "__len__")
     with cuda.defer_cleanup():
         
@@ -557,14 +466,10 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
         secondSmallest_device = cuda.to_device(secondSmallest_host)
         newMatrix_device = cuda.to_device(newMatrix_host)
         parityMatrix_device = cuda.to_device(parityMatrix)
-        #matrix = np.tile(softVector, (MATRIX_DIM0,1))
-        # Omer Sella: is this really needed ?
-        #matrix = matrix * parityMatrix
         matrix_device = cuda.to_device(matrix_host)
         result_device = cuda.to_device(result_host)
         
         zro_device = cuda.to_device(np.zeros(1))
-        
         # init a new berStatistics object to collect statistics
         berStats = common.berStatistics()#np.zeros(numberOfSNRpoints, dtype = LDPC_DECIMAL_DATA_TYPE)
         codeword = np.zeros(MATRIX_DIM1, dtype = np.int32)
@@ -581,38 +486,25 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
                 fromChannel_host, sigma, sigmaActual = addAWGN(modulatedCodeword, MATRIX_DIM1, SNRpoints[s], localPrng) 
                 softVector_host = copy.copy(fromChannel_host)
                 fromChannel_device = cuda.to_device(fromChannel_host)    
-                softVector_device = cuda.to_device(softVector_host)
-                
+                softVector_device = cuda.to_device(softVector_host)    
                 senseword = slicer(fromChannel_host)
                 berUncoded = np.count_nonzero(senseword != codeword)
-            
             
                 ########################### Decoding happens here #######################
                 #start = time.time()
                 iterator = 0
                 isCodeword = False
                 maskedFanOut[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](parityMatrix_device, softVector_device, matrix_device)
-                
                 # Check if fromChannel makes a codeword    
                 slicerCuda[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](softVector_device, binaryVector_device)
-                
                 resetVector[1022, 1](isCodewordVector_device)
-                
                 calcBinaryProduct2[BLOCKS_PER_GRID_BINARY_CALC, THREADS_PER_BLOCK_BINARY_CALC](parityMatrix_device, binaryVector_device, isCodewordVector_device)
-                
                 mod2Vector[16, 511](isCodewordVector_device)
-                
                 checkIsCodeword[BLOCKS_PER_GRID_DIM0, THREADS_PER_BLOCK](isCodewordVector_device, result_device)
-                
-                #OSS: the syntax "if result_device[0] == 0" casuses a cuMemcpyDtoH error. I', replacing it with a numpy operation for debug
-                #OSS: 12/11/2021 it wasn't the syntax, the bug occured before it in mod2Vector, but was only raised after the == check.
-                #if np.sum(isCodewordVector_device) == 0 :
                 if result_device[0] == 0 :
                     isCodeword = True
                     
-               
                 while (iterator < numberOfIterations and not isCodeword):
-                
                     findMinimaAndNumberOfNegatives[BLOCKS_PER_GRID_DIM0, THREADS_PER_BLOCK](parityMatrix_device, matrix_device, smallest_device, secondSmallest_device, locationOfMinimum_device)
                     numberOfNegativesToProductOfSigns[BLOCKS_PER_GRID_DIM0, THREADS_PER_BLOCK](numberOfNegatives_device,productOfSigns_device)  
                     locateTwoSmallestHorizontal2DV2[BLOCKS_PER_GRID_LOCATE_TWO_SMALLEST_HORIZONTAL_2D, THREADS_PER_BLOCK_LOCATE_TWO_SMALLEST_HORIZONTAL_2D](matrix_device, parityMatrix_device, smallest_device, secondSmallest_device, locationOfMinimum_device)
@@ -627,47 +519,28 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
                     #assert ( np.all(testSoftVector == softVector))
                     cudaPlusDim1[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](softVector_device,fromChannel_device)
                     slicerCuda[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](softVector_device, binaryVector_device)
-                    
                     resetVector[1022, 1](isCodewordVector_device)
                     calcBinaryProduct2[BLOCKS_PER_GRID_BINARY_CALC, THREADS_PER_BLOCK_BINARY_CALC](parityMatrix_device, binaryVector_device, isCodewordVector_device)
                     mod2Vector[16, 511](isCodewordVector_device)
-                    
                     checkIsCodeword[BLOCKS_PER_GRID_DIM0, THREADS_PER_BLOCK](isCodewordVector_device, result_device)
-                    
                     if iterator % 6 == 0:
                         if result_device[0] == 0:
                             isCodeword = True
-                    #if result_device[0] == 0:
-                    #    isCodeword = True
                     maskedFanOut[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](parityMatrix_device, softVector_device, matrix_device)
                     cudaMatrixMinus2D[BLOCKS_PER_GRID_MATRIX_MINUS_2D, THREADS_PER_BLOCK_MATRIX_MINUS_2D](matrix_device, newMatrix_device) # = matrix_device - newMatrix_device
-                    
                     iterator = iterator + 1
-                 
-                
                 slicerCuda[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](softVector_device, binaryVector_device)
                 result_device[1] = 0
                 numberOfNonZeros[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](binaryVector_device, result_device)
                 #end = time.time()
                 #totalTime += (end - start)
-            
-                #binaryVector_host = binaryVector_device.copy_to_host()
-                
+                #binaryVector_host = binaryVector_device.copy_to_host()                
                 #softVector_host = softVector_device.copy_to_host()
-                
-                
                 #########################################################################
-                
                 result_host = result_device.copy_to_host()
                 berDecoded = result_host[1]
-                
                 berStats.addEntry(SNRpoints[s], sigma, sigmaActual, berUncoded, berDecoded, iterator, numberOfIterations, 'test')
                 
-            #print("***At SNR == " + str(SNRpoints[s]) + "Time it took the decoder:")
-            #print(totalTime)
-            #print("***And thr throughput is:")
-            #print(8176 * numOfTransmissions /totalTime)
-    
     #Omer Sella: added cuda.close() to see if I can run with concurrent futures.
     #cuda.close()
     return berStats
@@ -676,10 +549,7 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
 
 def evaluateMatrixAndEpsilon(parityMatrix, epsilon, numberOfIterations = 50, cudaDeviceNumber = 0):
     cuda.select_device(cudaDeviceNumber)
-    print("Using cuda device number: "+ str(cudaDeviceNumber))
-        
     with cuda.defer_cleanup():
-        
         ## Create assests
         softVector_host = np.zeros(MATRIX_DIM1, dtype = np.float32)
         isCodewordVector_host = np.ones(MATRIX_DIM0, dtype = np.int32)
@@ -693,7 +563,6 @@ def evaluateMatrixAndEpsilon(parityMatrix, epsilon, numberOfIterations = 50, cud
         matrix_host = np.zeros((MATRIX_DIM0, MATRIX_DIM1), dtype = np.float32)
         result_host = np.zeros(120, dtype = np.float32)
         temp_host = np.zeros(2, dtype = np.float)
-        
         # Move assests to device explicitly
         isCodewordVector_device = cuda.to_device(isCodewordVector_host)
         binaryVector_device = cuda.to_device(binaryVector_host)
@@ -706,20 +575,14 @@ def evaluateMatrixAndEpsilon(parityMatrix, epsilon, numberOfIterations = 50, cud
         parityMatrix_device = cuda.to_device(parityMatrix)
         matrix_device = cuda.to_device(matrix_host)
         result_device = cuda.to_device(result_host)
-        
         zro_device = cuda.to_device(np.zeros(1))
         codeword = np.zeros(MATRIX_DIM1, dtype = np.int32)
         modulatedCodeword = modulate(codeword, MATRIX_DIM1)   
-
-        
         #####
         fromChannel_host = modulatedCodeword + epsilon
-        #####        
-        
         softVector_host = copy.copy(fromChannel_host)
         fromChannel_device = cuda.to_device(fromChannel_host)    
         softVector_device = cuda.to_device(softVector_host)
-                
         senseword = slicer(fromChannel_host)
         berUncoded = np.count_nonzero(senseword != codeword)
         berDecoded = MATRIX_DIM1
@@ -730,66 +593,39 @@ def evaluateMatrixAndEpsilon(parityMatrix, epsilon, numberOfIterations = 50, cud
         iterator = 0
         isCodeword = False
         maskedFanOut[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](parityMatrix_device, softVector_device, matrix_device)
-                
         # Check if fromChannel makes a codeword    
         slicerCuda[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](softVector_device, binaryVector_device)
         resetVector[1022, 1](isCodewordVector_device)
         calcBinaryProduct2[BLOCKS_PER_GRID_BINARY_CALC, THREADS_PER_BLOCK_BINARY_CALC](parityMatrix_device, binaryVector_device, isCodewordVector_device)
         mod2Vector[16, 511](isCodewordVector_device)
         checkIsCodeword[BLOCKS_PER_GRID_DIM0, THREADS_PER_BLOCK](isCodewordVector_device, result_device)
-                
         if result_device[0] == 0 :
             isCodeword = True
-            berDecoded = 0
-            #print("*** Initial check thinks the input is a codeword.")    
-               
+            berDecoded = 0   
         while (iterator < numberOfIterations and not isCodeword):
-                
-            
             findMinimaAndNumberOfNegatives[BLOCKS_PER_GRID_DIM0, THREADS_PER_BLOCK](parityMatrix_device, matrix_device, smallest_device, secondSmallest_device, locationOfMinimum_device)
             numberOfNegativesToProductOfSigns[BLOCKS_PER_GRID_DIM0, THREADS_PER_BLOCK](numberOfNegatives_device,productOfSigns_device)  
             locateTwoSmallestHorizontal2DV2[BLOCKS_PER_GRID_LOCATE_TWO_SMALLEST_HORIZONTAL_2D, THREADS_PER_BLOCK_LOCATE_TWO_SMALLEST_HORIZONTAL_2D](matrix_device, parityMatrix_device, smallest_device, secondSmallest_device, locationOfMinimum_device)
             signReduceHorizontal[1022, 1](matrix_device, productOfSigns_device)  
             produceNewMatrix2D[BLOCKS_PER_GRID_PRODUCE_NEW_MATRIX_2D, THREADS_PER_BLOCK_PRODUCE_NEW_MATRIX_2D](parityMatrix_device, matrix_device, smallest_device, secondSmallest_device, locationOfMinimum_device, productOfSigns_device, newMatrix_device)
             matrixSumVertical[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](newMatrix_device, softVector_device)
-            
-            
             #sumReduction2DVertical[BLOCKS_PER_GRID_VERTICAL_SUM, THREADS_PER_BLOCK_VERTICAL_SUM](newMatrix_device, softVector_device)
             # Omer Sella: Notice that the result of matrix summation using the cuda 
             # kernel does not have to be exactly as the numpy sum, 
             # even if the data types are identical. That's why the following two lines are commented:
-            #testSoftVector = np.sum(newMatrix, axis = 0)
-            #assert ( np.all(testSoftVector == softVector))
             cudaPlusDim1[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](softVector_device,fromChannel_device)
             slicerCuda[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](softVector_device, binaryVector_device)
-                    
-                    
-                    
             resetVector[1022, 1](isCodewordVector_device)
             calcBinaryProduct2[BLOCKS_PER_GRID_BINARY_CALC, THREADS_PER_BLOCK_BINARY_CALC](parityMatrix_device, binaryVector_device, isCodewordVector_device)
             mod2Vector[16, 511](isCodewordVector_device)
-                    
             checkIsCodeword[BLOCKS_PER_GRID_DIM0, THREADS_PER_BLOCK](isCodewordVector_device, result_device)
-            #temp_host = result_device.copy_to_host()
+            # The choice of checking every 6 iteration is dependent on cuda version, GPU and host, and requires ad-hoc fine tuning 
             if iterator % 6 == 0:
                 if result_device[0] == 0:
                     isCodeword = True
-                    #print("Decoding stopped at iteration " + str(iterator))
-                    
-                    
             maskedFanOut[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](parityMatrix_device, softVector_device, matrix_device)
-                    
-                    
-                    
             cudaMatrixMinus2D[BLOCKS_PER_GRID_MATRIX_MINUS_2D, THREADS_PER_BLOCK_MATRIX_MINUS_2D](matrix_device, newMatrix_device) # = matrix_device - newMatrix_device
-                    
             iterator = iterator + 1
-                    
-                    
-                    
-                   
-                
-        print("*** while iterator finished at " + str(iterator))
         slicerCuda[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](softVector_device, binaryVector_device)
         result_device[1] = 0
         numberOfNonZeros[BLOCKS_PER_GRID_DIM1, THREADS_PER_BLOCK](binaryVector_device, result_device)
@@ -797,34 +633,6 @@ def evaluateMatrixAndEpsilon(parityMatrix, epsilon, numberOfIterations = 50, cud
         result_host = result_device.copy_to_host()
         totalTime += (end - start)
         berDecoded = result_host[1]
-        print(berDecoded)
-            #binaryVector_host = binaryVector_device.copy_to_host()
-                
-            #softVector_host = softVector_device.copy_to_host()
-                
-                
-            #########################################################################
-            
-            
-            #decodedWord = slicer(softVector_host)
-            #print("******** numpy thinks: " + str(np.sum(decodedWord == codeword)) + " and cuda thinks: " + str(result_device[1]))
-            #print(status)
-                
-            
-            
-            #np.count_nonzero(decodedWord != codeword)
-                
-            #berStats.addEntry(SNRpoints[s], sigma, sigmaActual, berUncoded, berDecoded, iterator, numberOfIterations, 'test')
-            #print("Modulated codeword in location %d is %f" % (0, modulatedCodeword[0]))
-            #print("dirtyModulated in location %d after flip is %f" % (0, dirtyModulated[0]))
-            #print("Decoded in location %d after flip is %f" % (0, decodedWord[0]))
-        #print("***Time it took the decoder:")
-        #print(totalTime)
-        #print("***And thr throughput is:")
-        #print(8176 * numOfTransmissions /totalTime)
-        #print("*** s is : " + str(s))
-        #print("*** t is : " + str(t))
-    
     return berUncoded, berDecoded, iterator, totalTime
 
 
@@ -833,7 +641,6 @@ def testNearEarth(numOfTransmissions = 60, graphics = True):
     status = 'Near earth problem'
     print("*** in test near earth")
     nearEarthParity = np.int32(fileHandler.readMatrixFromFile(str(projectDir) + '/codeMatrices/nearEarthParity.txt', 1022, 8176, 511, True, False, False))
-    #numOfTransmissions = 50
     roi = [3.0, 3.2 ,3.4, 3.6]#,3.6, 3.8]#[28, 29, 30, 31]##np.arange(3, 3.8, 0.2)
     codewordSize = 8176
     messageSize = 7154
@@ -849,11 +656,8 @@ def testNearEarth(numOfTransmissions = 60, graphics = True):
     pConst = np.poly1d([1])
     
     p = np.polyfit(scatterSnr, scatterBer, 1)
-            
     # Omer Sella: 16/06/2021 decided to use np polynomials. Also changed the reward to the area between
     # the constant 1 and the fitted line.
-    #slope = p[0]
-    #bias = p[1]
     p1 = np.poly1d(p)
     pTotalInteg = (pConst - p1).integ()
     reward = pTotalInteg(roi[-1]) - pTotalInteg(roi[0])
@@ -871,18 +675,14 @@ def testNearEarth(numOfTransmissions = 60, graphics = True):
 def testConcurrentFutures(numberOfCudaDevices = 1):
     nearEarthParity = np.int32(fileHandler.readMatrixFromFile(str(projectDir) + '/codeMatrices/nearEarthParity.txt', 1022, 8176, 511, True, False, False))
     numOfTransmissions = 15
-    roi = [3.0, 3.2 ,3.4, 3.6]#,3.6, 3.8]#[28, 29, 30, 31]##np.arange(3, 3.8, 0.2)
+    roi = [3.0, 3.2 ,3.4, 3.6]
     numOfIterations = 50
     seeds = LDPC_LOCAL_PRNG.randint(0, LDPC_MAX_SEED, numberOfCudaDevices, dtype = LDPC_SEED_DATA_TYPE) 
     berStats = common.berStatistics()
     #################
     with concurrent.futures.ProcessPoolExecutor() as executor:
         results = {executor.submit(evaluateCodeCuda, seeds[deviceNumber], roi, numOfIterations, nearEarthParity, numOfTransmissions, 'None', deviceNumber): deviceNumber for deviceNumber in range(numberOfCudaDevices)}
-        #print(results)
         for result in concurrent.futures.as_completed(results):
-            #print(result.result())
-            #a = result.result()
-            #print(a)
             berStats = berStats.add(result.result())
     ##################
     return berStats
@@ -895,55 +695,16 @@ def evaluateCodeCudaWrapper(seeds, SNRpoints, numberOfIterations, parityMatrix, 
     # Number of iterations must be divisible by numberOfCudaDevices
     berStats = common.berStatistics()
     newNumOfTransmissions = numOfTransmissions // numberOfCudaDevices
-    
-    #Temporarily disabled for debug of cu_init error
-    print("*** debugging multiple futures. NumberOfCudaDevices: " + str(numberOfCudaDevices))
     with concurrent.futures.ProcessPoolExecutor() as executor:
         results = {executor.submit(evaluateCodeCuda, seeds[deviceNumber], SNRpoints, numberOfIterations, parityMatrix, newNumOfTransmissions, 'None', deviceNumber): deviceNumber for deviceNumber in range(numberOfCudaDevices)}
-        #print(results)
     for result in concurrent.futures.as_completed(results):
-        #print(result.result())
         berStats = berStats.add(result.result())
-   # 
-   
-    
-    #SNRList = [SNRpoints] * numberOfCudaDevices
-    #numberOfTransmissionsList = [newNumOfTransmissions] * numberOfCudaDevices
-    #noneList = ['None'] * numberOfCudaDevices
-    #deviceList = list(range(numberOfCudaDevices))
-    #with concurrent.futures.ProcessPoolExecutor() as executor:
-    #    results = executor.map(evaluateCodeCuda, seeds, SNRList, numberOfTransmissionsList, noneList, deviceList)
-    #    for r in results:
-    #        print(r)
-    #        berStats = berStats.add(r)
-    #children = []
-    #for cid, dev in enumerate(cuda.list_devices()):
-    #    t = threading.Thread(target=evaluateCodeCuda, args=(seeds[cid], SNRpoints, numberOfIterations, parityMatrix, newNumOfTransmissions, 'None', cid))
-    #    t.start()
-    #    children.append(t)
-    #bs = []
-    #for t in children:
-    #    bs.append(t.join())
-    #    print(t)
-    #print(children)
-    #print(bs)
-    
-    
     return berStats
             
 
         
 def main():
-    print("*** In ldpcCUDA.py main function.")
-    #status = testFindMinimum()
-    #print(status)
-    #status = testCheckUpdateAndSum()
-    #print(status)
-    #status = testBinaryProduct()
-    #print(status)
-    #status = testIntegration()
-    #print(status)
-    
+    print("*** In ldpcCUDA.py main function.")  
     #bStats, status = testNearEarth()
     start = time.time()
     bStats = testConcurrentFutures(numberOfCudaDevices = 1)
@@ -953,10 +714,6 @@ def main():
     status = 0
     #testAsyncExec()
     return bStats, status
-
-
-
-# We want: A function thta takes a specific H (nearEarth) and an eps (a 8176 noise vectore) and runs F(H,eps)
 
 
 if __name__ == '__main__':

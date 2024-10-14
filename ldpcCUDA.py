@@ -5,12 +5,10 @@ Created on Fri Mar  20 16:53 2020
 @author: Omer
 """
 ### New encoder / decoder implementation using numba + cuda
-#if you uncomment the next line the world will end
 from typing import Iterator
 import numpy as np
 import os
 import time
-#import math
 import copy
 import operator
 import math
@@ -41,9 +39,7 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
     
     cuda.select_device(cudaDeviceNumber)
     device = cuda.get_current_device()
-    print("*** debugging mp issues: "+ str(device))
-    print("*** debugging mp issues: "+ str(cuda.gpus))
-    
+    # Constants 
     LDPC_LOCAL_PRNG = np.random.RandomState(7134066)
     LDPC_MAX_SEED = 2**31 - 1
     LDPC_SEED_DATA_TYPE = np.int64
@@ -61,14 +57,11 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
     BLOCKS_PER_GRID_DIM0 = (MATRIX_DIM0 + (THREADS_PER_BLOCK - 1)) // THREADS_PER_BLOCK
     BLOCKS_PER_GRID_DIM1 = (MATRIX_DIM1 + (THREADS_PER_BLOCK - 1)) // THREADS_PER_BLOCK
     LDPC_CUDA_INT_DATA_TYPE = np.int32
-
     SHARED_MEM_VERTICAL_RECUTION = 512
     THREADS_PER_BLOCK_VERTICAL_SUM = (512, 1)
-
     BLOCKS_PER_GRID_X_VERTICAL_SUM = math.ceil(512 / THREADS_PER_BLOCK_VERTICAL_SUM[0])
     BLOCKS_PER_GRID_Y_VERTICAL_SUM = math.ceil(MATRIX_DIM1 / THREADS_PER_BLOCK_VERTICAL_SUM[1])
     BLOCKS_PER_GRID_VERTICAL_SUM = (BLOCKS_PER_GRID_X_VERTICAL_SUM, BLOCKS_PER_GRID_Y_VERTICAL_SUM)
-
     SHARED_MEMORY_SIZE_LOCATE_TWO_SMALLEST_HORIZONTAL = 1024
     THREADS_PER_BLOCK_LOCATE_TWO_SMALLEST_HORIZONTAL_2D = (1,1022)
     BLOCKS_PER_GRID_X_LOCATE_TWO_SMALLEST_HORIZONTAL_2D = math.ceil(MATRIX_DIM0 / THREADS_PER_BLOCK_LOCATE_TWO_SMALLEST_HORIZONTAL_2D[0])
@@ -76,6 +69,7 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
     BLOCKS_PER_GRID_LOCATE_TWO_SMALLEST_HORIZONTAL_2D = (BLOCKS_PER_GRID_X_LOCATE_TWO_SMALLEST_HORIZONTAL_2D, BLOCKS_PER_GRID_Y_LOCATE_TWO_SMALLEST_HORIZONTAL_2D)
 
     THREADS_PER_BLOCK_PRODUCE_NEW_MATRIX_2D = (2,511)
+    # Omer Sella: I tried the following (equivalent) combinations and got the following performance:
     # (511,2) 576.11 micro
     # (1022,1) 724.48 micro
     # (2,511) 472.58 micro
@@ -83,6 +77,7 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
     BLOCKS_PER_GRID_Y_PRODUCE_NEW_MATRIX_2D = math.ceil(MATRIX_DIM1 / THREADS_PER_BLOCK_PRODUCE_NEW_MATRIX_2D[1])
     BLOCKS_PER_GRID_PRODUCE_NEW_MATRIX_2D = (BLOCKS_PER_GRID_X_PRODUCE_NEW_MATRIX_2D, BLOCKS_PER_GRID_Y_PRODUCE_NEW_MATRIX_2D)
     THREADS_PER_BLOCK_MATRIX_MINUS_2D = (1,1022)
+    # Omer Sella: I tried the following (equivalent) combinations and got the following performance:
     # (2,511) 295 micro
     # (511,2) 1.64 mili
     # (2,1022) Doesn't work
@@ -96,13 +91,10 @@ def evaluateCodeCuda(seed, SNRpoints, numberOfIterations, parityMatrix, numOfTra
     BLOCKS_PER_GRID_X_BINARY = math.ceil(MATRIX_DIM0 / THREADS_PER_BLOCK_BINARY_CALC[0])
     BLOCKS_PER_GRID_Y_BINARY = math.ceil(MATRIX_DIM1 / THREADS_PER_BLOCK_BINARY_CALC[1])
     BLOCKS_PER_GRID_BINARY_CALC = (BLOCKS_PER_GRID_X_BINARY, BLOCKS_PER_GRID_Y_BINARY)
-
-
-
+	
     #https://docs.microsoft.com/en-us/sysinternals/downloads/process-explorer
     #https://en.wikipedia.org/wiki/Thread_block_(CUDA_programming)
     #https://numba.pydata.org/numba-doc/dev/cuda/examples.html
-
     #Omer Sella: see the following link regarding numba cuda caching
     #https://github.com/numba/numba/issues/1711
     
@@ -639,18 +631,14 @@ def evaluateMatrixAndEpsilon(parityMatrix, epsilon, numberOfIterations = 50, cud
 
 def testNearEarth(numOfTransmissions = 60, graphics = True):
     status = 'Near earth problem'
-    print("*** in test near earth")
     nearEarthParity = np.int32(fileHandler.readMatrixFromFile(str(projectDir) + '/codeMatrices/nearEarthParity.txt', 1022, 8176, 511, True, False, False))
     roi = [3.0, 3.2 ,3.4, 3.6]#,3.6, 3.8]#[28, 29, 30, 31]##np.arange(3, 3.8, 0.2)
     codewordSize = 8176
     messageSize = 7154
     numOfIterations = 50
-
     start = time.time()
     bStats = evaluateCodeCuda(460101, roi, numOfIterations, nearEarthParity, numOfTransmissions)    
     end = time.time()
-    print('Time it took for code evaluation == %d' % (end-start))
-    print('Throughput == '+str((8176*len(roi)*numOfTransmissions)/(end-start)) + 'bits per second.')
     a, b, c, d = bStats.getStats(codewordSize)
     scatterSnr, scatterBer, scatterItr, snrAxis, averageSnrAxis, berData, averageNumberOfIterations = bStats.getStatsV2()
     pConst = np.poly1d([1])
@@ -704,13 +692,10 @@ def evaluateCodeCudaWrapper(seeds, SNRpoints, numberOfIterations, parityMatrix, 
 
         
 def main():
-    print("*** In ldpcCUDA.py main function.")  
     #bStats, status = testNearEarth()
     start = time.time()
     bStats = testConcurrentFutures(numberOfCudaDevices = 1)
     end =  time.time()
-    print("*** total running time == " + str(end - start))
-    print(bStats.getStats())
     status = 0
     #testAsyncExec()
     return bStats, status

@@ -8,7 +8,9 @@
 import os, sys
 ldpcProjectDir = os.environ.get('LDPC')
 sys.path.insert(1, ldpcProjectDir)
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ALL_COMPLETED
+
+import concurrent
 #filehandler is a file from the ldpc project
 import fileHandler 
 import numpy as np
@@ -20,9 +22,9 @@ class bitNode():
     """
     def __init__(self, bitNodeNumber): #chekNodes, received, checkNodeNumbers, checkNodes, bitNodeNumber):
         self.checkNodes = {}#{b : cn for (b,cn) in zip(checkNodeNumbers, checkNodes)}
-        self.lamda = 0#{c:0 for c in checkNodes}
+        self.lamda = 1#{c:0 for c in checkNodes}
         self.eta = {}#{c:0 for c in checkNodes}
-        self._received = 0#{b : r for (b,r) in zip(bitNumbers, received)}
+        self.received = 1#{b : r for (b,r) in zip(bitNumbers, received)}
         #self.received = received
         self.bitNodeNumber = bitNodeNumber
         return
@@ -32,20 +34,27 @@ class bitNode():
         #self.lamda[checkNodeNumber] = 0 #{c:0 for c in checkNodes}
         self.eta[checkNodeNumber] = 0 #{c:0 for c in checkNodes}
         return
+    
     def setReceived(self, received):
+        self.received = received
         self.lamda = received
         return
 
     def pushLamda(self):
-        for c in self.checkNodes:
-            c.lamda[self.bitNodeNumber] = self.lamda
+        # Not used !
+        for k in list(self.checkNodes.keys()):
+            self.checkNodes[k].lamda[self.bitNodeNumber] = self.lamda
         return
     
     def step(self):
-        sumOfEta = sum(self.eta.values())
-        self.lamda = self.received + sumOfEta
-        self.pushLamda()
+        self.lamda = self.received + sum(self.eta.values())
         return
+    
+    def slice(self):
+        if self.lamda > 0:
+            return 1
+        else:
+            return 0
         
 class checkNode(): 
     """
@@ -66,18 +75,23 @@ class checkNode():
         return
     
     def pushEta(self):
-        for b in self.bitNodes:
-            b.eta[self.checkNodeNumber] = self.eta[b]
+        for k in list(self.bitNodes.keys()):
+            self.bitNodes[k].eta[self.checkNodeNumber] = self.etaNew[k]
         return
         
     def step(self):
-        for key in list(self.bitNodes.keys()):
-            signs = np.where(np.array([self.bitNodes[key].lamda - self.eta[otherKey] for otherKey in list(self.bitNodes.keys()) if otherKey != key]) > 0, 1, -1)
-            extendedSign = np.prod( signs )
-            self.etaNew[key] = min([ np.abs(self.eta[otherKey] - self.lamda[otherKey]) 
-                                  for otherKey in list(self.bitNodes.keys()) if otherKey != key]) * extendedSign
-        for b in self.bitNumbers:
+        for key in self.bitNodes.keys():
+            signs = np.where(np.array([self.bitNodes[otherKey].lamda - self.eta[otherKey] for otherKey in list(self.bitNodes.keys()) if otherKey != key]) > 0, 1, -1)
+            #signs = np.where(np.array([self.bitNodes[otherKey].lamda for otherKey in list(self.bitNodes.keys()) if otherKey != key]) > 0, 1, -1)
+            extendedSignProduct = np.prod( signs )
+            self.etaNew[key] = min([ np.abs(self.bitNodes[otherKey].lamda - self.eta[otherKey]) 
+                                  for otherKey in list(self.bitNodes.keys()) if otherKey != key]) * extendedSignProduct
+            #self.etaNew[key] = min([ np.abs(self.bitNodes[otherKey].lamda) 
+            #                      for otherKey in list(self.bitNodes.keys()) if otherKey != key]) * extendedSignProduct
+        # Update eta to newEta
+        for b in self.bitNodes.keys():
             self.eta[b] = self.etaNew[b]
+        # Communicate new eta values to the bit nodes
         self.pushEta()
         return
 
@@ -103,7 +117,10 @@ def decode(bitNodeList, checkNodeList, numberOfIterations, parityMatrix, checkEv
 
     """
     isCodeword = False
-    for i in range(numberOfIterations):
+    for i in range(1, numberOfIterations + 1,1):
+        sliced = np.array([b.slice() for b in bitNodeList])
+        print(f"On iteration {i} the message is: {sliced}")
+        print(i)
         # Check node calculation using step
         with ProcessPoolExecutor() as executor:
             results = [executor.submit(c.step()) for c in checkNodeList]
@@ -117,8 +134,9 @@ def decode(bitNodeList, checkNodeList, numberOfIterations, parityMatrix, checkEv
         
         if i % checkEvery == 0:
             sliced = np.array([b.slice() for b in bitNodeList])
-            isCodeword = np.all(parityMatrix.dot(sliced) % 2 == 0)
+            isCodeword = np.all(parityMatrix.T.dot(sliced) % 2 == 0)
         if isCodeword:
+            print(f"Codeword found !!!")
             break
     # note that this function doesn't return a codeword or a vector, the information is in the bit nodes
     return
@@ -129,9 +147,29 @@ def exampleNearEarth():
     # Generate tanner graph
     bitNodesList, checkNodesList = tannerGraphGenerator(H)
     #
-    received = np.random.normal(0,1,H.shape[1])
-    #print(H.shape)
-    decode(bitNodesList, checkNodesList, 10, H, 100)
+    length = H.shape[1]
+    SNRdb = 2.5
+    ## Now use the definition: SNR = signal^2 / sigma^2
+    sigma = np.sqrt(0.5 / (10 ** (SNRdb/10)))
+    noise = np.float32(np.random.normal(0, sigma, length))
+    received = noise
+    
+    for i,b in zip(range(length), bitNodesList):
+        b.setReceived(received[i])
+    print(received)
+    #print(np.where(received > 0, 1, 0))   
+    a = checkNodesList[0]
+   
+    #a.step()
+    decode(bitNodesList, checkNodesList, 10, H, 1)
+    #b0 = bitNodesList[0]
+    #b176 = bitNodesList[176]
+    #b523 = bitNodesList[523]
+    #b0.step()
+    #b176.step()
+    #b523.step()
+    sliced = np.array([b.slice() for b in bitNodesList])
+    print(sliced)
 
 
 if __name__ == "__main__":
